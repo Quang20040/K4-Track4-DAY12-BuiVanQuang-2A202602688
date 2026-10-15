@@ -117,12 +117,41 @@ def replay(segs, make_stream, mode="fastest", cost_seed=0, spike_prob=0.02, base
 def compare_with_tol(golden, new, atol=1e-3, rtol=1e-3):
     """Segment-by-segment comparison. A segment 'differs' if any command is outside atol + rtol * |golden|.
     Also reports how many segments are not bit-identical, to show why exact equality is the wrong test."""
-    # TODO (Bước 1): hãy tự cài hàm này. Gợi ý:
-    #   golden và new có shape (n_seg, T), NaN ở phần đệm. Một đoạn 'lệch' nếu có lệnh nào vượt atol + rtol
-    #   * |golden|. Hai NaN ở cùng vị trí coi là bằng nhau. Trả dict có đúng các khoá: segments,
-    #   differ_beyond_tol, not_bit_identical (số đoạn không giống TỪNG BIT), max_abs_diff, atol, rtol,
-    #   differing_segments (tối đa 20 chỉ số đầu, dạng list).
-    raise NotImplementedError("TODO compare_with_tol: xem GUIDE.md, Bước 1")
+    golden = np.asarray(golden)
+    new = np.asarray(new)
+    n_seg = int(golden.shape[0])
+
+    both_nan = np.isnan(golden) & np.isnan(new)
+    one_nan = np.isnan(golden) ^ np.isnan(new)
+
+    bit_ident = (golden == new) | both_nan
+    not_bit_ident_mask = ~np.all(bit_ident, axis=1)
+    not_bit_identical = int(np.sum(not_bit_ident_mask))
+
+    with np.errstate(invalid="ignore"):
+        abs_diff = np.abs(golden - new)
+        tol = atol + rtol * np.abs(golden)
+        beyond = one_nan | (~both_nan & (abs_diff > tol))
+
+    differ_mask = np.any(beyond, axis=1)
+    differ_beyond_tol = int(np.sum(differ_mask))
+    differing_segments = [int(i) for i in np.flatnonzero(differ_mask)[:20]]
+
+    valid = ~np.isnan(golden) & ~np.isnan(new)
+    if np.any(valid):
+        max_abs_diff = float(np.nanmax(np.abs(golden[valid] - new[valid])))
+    else:
+        max_abs_diff = 0.0
+
+    return {
+        "segments": n_seg,
+        "differ_beyond_tol": differ_beyond_tol,
+        "not_bit_identical": not_bit_identical,
+        "max_abs_diff": max_abs_diff,
+        "atol": float(atol),
+        "rtol": float(rtol),
+        "differing_segments": differing_segments,
+    }
 
 
 def summation_order_demo(n=1_000_000, seed=0):
